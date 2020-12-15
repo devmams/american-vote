@@ -10,30 +10,36 @@ import random
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
 
-def convertVoteToDigit(c):
+# one_hot_vector = [y,?,n]
+def convertOutputToDigit(c):
     if c == 'republican':
         return 1
-    elif c == 'democrat':
-        return 0
-    elif c == 'y':
-        return 1
-    elif c == 'n':
-        return -1
     else:
         return 0
 
+def convertInputToOneHotVector(c):
+    if c == 'y':
+        return [1, 0, 0]
+    elif c == '?':
+        return [0, 1, 0]
+    else:
+        return [0, 0, 1]
 
 def getData(file):
-    votes = []
+    outputs = []
+    inputs = []
     lines = open(file, "r").readlines()
     for line in lines:
         line = line.replace('\n', '').split(',')
         for l in line:
-            votes.append(convertVoteToDigit(l))
-    votes = np.reshape(votes, (-1, 17))
-    target = votes[:, 0]
-    data = votes[:, 1:]
-    return data, target
+            if len(l) > 1:
+                outputs.append(convertOutputToDigit(l))
+            else:
+                inputs.append(convertInputToOneHotVector(l))
+
+    inputs = np.reshape(inputs, (-1, 16, 3))
+    return inputs, outputs
+
 
 def getTrainTestData(data, target, nb_train_data):
     train_data, train_target = data[0:nb_train_data,:], target[0:nb_train_data]
@@ -41,27 +47,39 @@ def getTrainTestData(data, target, nb_train_data):
     return train_data, train_target, test_data, test_target
 
 
-class NN(nn.Module):
-    def __init__(self, input_size, num_classes):
-        super(NN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 50)
-        self.fc2 = nn.Linear(50, num_classes)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
-
-
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Hyperparameters
-input_size = 16
+input_size = 3
+hidden_size = 128
+num_layers = 2
 num_classes = 2
+sequence_length = 16
 learning_rate = 0.001
-batch_size = 8
-num_epochs = 1
+batch_size = 1
+num_epochs = 2
+
+
+# Recurrent neural network (many-to-one)
+class RNN(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes):
+        super(RNN, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, 2)
+
+    def forward(self, x):
+        # Set initial hidden and cell states
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
+
+        out, _ = self.lstm(x, (h0, c0))
+        out = out[:, -1, :]
+        out = self.fc(out)
+        return out
+
 
 data, target = getData("data.txt")
 train_data, train_target, test_data, test_target = getTrainTestData(data, target, 335)
@@ -78,8 +96,12 @@ test_dataset = utils.TensorDataset(test_data_tensor,test_target_tensor)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
+
+# print(train_dataset[0])
+# print(next(iter(train_loader)))
+
 # Initialize network
-model = NN(input_size=input_size, num_classes=num_classes).to(device)
+model = RNN(input_size, hidden_size, num_layers, num_classes).to(device)
 
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
@@ -91,9 +113,6 @@ for epoch in range(num_epochs):
         # Get data to cuda if possible
         data = data.to(device=device)
         targets = targets.to(device=device)
-
-        # Get to correct shape
-        #data = data.reshape(data.shape[0], -1)
 
         # forward
         scores = model(data.float())
@@ -108,8 +127,8 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         print(loss)
-
-
+#
+#
 def check_accuracy(loader, model):
 
     num_correct = 0
