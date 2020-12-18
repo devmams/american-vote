@@ -57,8 +57,8 @@ num_layers = 2
 num_classes = 2
 sequence_length = 16
 learning_rate = 0.001
-batch_size = 1
-num_epochs = 2
+batch_size = 32
+num_epochs = 5
 
 
 # Recurrent neural network (many-to-one)
@@ -96,10 +96,6 @@ test_dataset = utils.TensorDataset(test_data_tensor,test_target_tensor)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
-
-# print(train_dataset[0])
-# print(next(iter(train_loader)))
-
 # Initialize network
 model = RNN(input_size, hidden_size, num_layers, num_classes).to(device)
 
@@ -126,7 +122,7 @@ for epoch in range(num_epochs):
         # gradient descent or adam step
         optimizer.step()
 
-        print(loss)
+        print("loss :",     loss)
 #
 #
 def check_accuracy(loader, model):
